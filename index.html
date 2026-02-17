@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>🏢 Super Tower Builder</title>
+  <style>
+    body { margin:0; padding:0; overflow:hidden; font-family:Arial,sans-serif; background:linear-gradient(180deg,#87CEEB,#98D8C8); height:100vh; user-select:none; }
+    canvas { display:block; }
+    #ui { position:absolute; top:10px; left:10px; right:10px; display:flex; justify-content:space-between; font-size:1.3rem; font-weight:bold; color:#333; z-index:10; pointer-events:none; }
+    #wobble { position:absolute; bottom:20px; left:50%; transform:translateX(-50%); width:220px; height:25px; background:rgba(255,0,0,0.3); border-radius:12px; overflow:hidden; z-index:10; }
+    #wobble-bar { height:100%; background:linear-gradient(90deg,#ff4757,#ff6b81); width:0%; transition:width 0.4s; }
+    #start, #end { position:absolute; inset:0; background:rgba(0,0,0,0.75); color:white; display:flex; flex-direction:column; align-items:center; justify-content:center; z-index:20; }
+    h1 { font-size:2.8rem; margin:0 0 20px; text-shadow:0 0 25px #00ff9d; }
+    button { font-size:1.3rem; padding:16px 40px; margin:12px; border:none; border-radius:50px; color:white; cursor:pointer; font-weight:bold; box-shadow:0 10px 30px rgba(0,0,0,0.4); transition:transform 0.2s; }
+    button:hover { transform:scale(1.05); }
+    .buy { background:linear-gradient(45deg,#5f27cd,#8e44ad); }
+    .revive { background:linear-gradient(45deg,#2ecc71,#27ae60); }
+  </style>
+</head>
+<body>
+  <canvas id="c"></canvas>
+  <div id="ui">
+    <span>Score: <span id="score">0</span></span>
+    <span>Gems: <span id="gems">0</span> 🪙</span>
+  </div>
+  <div id="wobble"><div id="wobble-bar"></div></div>
+
+  <div id="start">
+    <h1>🏢 Super Tower Builder</h1>
+    <p>Drag floor left/right, release to drop! Stack high for bonuses!</p>
+    <button id="startBtn">Start Stacking! 🚀</button>
+  </div>
+
+  <div id="end" style="display:none">
+    <h1>Toppled! 💥</h1>
+    <p>Score: <span id="final">0</span> | High: <span id="high">0</span></p>
+    <p id="bonusMsg"></p>
+    <button id="reviveBtn" class="revive">Revive (20 Gems)</button>
+    <button id="againBtn">Play Again</button>
+    <button id="buyBtn" class="buy">💰 100 Gems ₹10 via UPI</button>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('c');
+    const ctx = canvas.getContext('2d');
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    let score = 0, high = localStorage.getItem('towerHigh') || 0;
+    let gems = parseInt(localStorage.getItem('towerGems')) || 0;
+    let purchased = parseInt(localStorage.getItem('towerPurchased')) || 0;
+    let floors = [], wobble = 0, maxWobble = 2500;
+    let falling = {x: canvas.width/2 - 100, y: -50, w: 200 + Math.random()*150, h: 40, dropping: false};
+    let isDragging = false, prevCenter = canvas.width/2;
+    const colors = ['#ff6b6b','#4ecdc4','#45b7d1','#96c93d','#feca57','#ff9ff3','#ff4757'];
+
+    document.getElementById('gems').textContent = gems;
+
+    function spawn() {
+      falling.w = 200 + Math.random()*150;
+      falling.x = prevCenter - falling.w/2;
+      falling.y = -50;
+      falling.dropping = false;
+    }
+
+    function update() {
+      if (falling.dropping) {
+        falling.y += 8;
+        if (falling.y + falling.h >= canvas.height - floors.length * 40) {
+          const offset = Math.abs(falling.x + falling.w/2 - prevCenter);
+          wobble += offset * 8;
+          document.getElementById('wobble-bar').style.width = (wobble / maxWobble * 100) + '%';
+          if (wobble > maxWobble) return endGame();
+
+          const snap = offset * 0.4;
+          floors.push({x: falling.x + snap, w: falling.w, color: colors[Math.floor(Math.random()*colors.length)]});
+          prevCenter = falling.x + snap + falling.w/2;
+          score += Math.max(0, 100 - offset);
+          document.getElementById('score').textContent = score;
+
+          const level = floors.length;
+          if (level === 10 || level === 20) {
+            const bonus = purchased;
+            gems += bonus;
+            localStorage.setItem('towerGems', gems);
+            document.getElementById('gems').textContent = gems;
+            document.getElementById('bonusMsg').textContent = `🎉 ${level} floors! DOUBLE gems bonus +${bonus} free!`;
+          }
+
+          spawn();
+        }
+      } else {
+        falling.y += 3;
+      }
+    }
+
+    function draw() {
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+      let y = canvas.height;
+      floors.forEach(f => {
+        ctx.fillStyle = f.color;
+        ctx.fillRect(f.x, y - 40, f.w, 40);
+        y -= 40;
+      });
+      ctx.fillStyle = '#ff9f43';
+      ctx.fillRect(falling.x, falling.y, falling.w, falling.h);
+    }
+
+    function loop() { update(); draw(); requestAnimationFrame(loop); }
+
+    function startGame() {
+      document.getElementById('start').style.display = 'none';
+      document.getElementById('end').style.display = 'none';
+      floors = []; wobble = 0; score = 0;
+      prevCenter = canvas.width/2;
+      document.getElementById('score').textContent = 0;
+      document.getElementById('wobble-bar').style.width = '0%';
+      spawn();
+    }
+
+    function endGame() {
+      document.getElementById('end').style.display = 'flex';
+      document.getElementById('final').textContent = score;
+      if (score > high) {
+        high = score;
+        localStorage.setItem('towerHigh', high);
+      }
+      document.getElementById('high').textContent = high;
+    }
+
+    canvas.addEventListener('pointerdown', e => {
+      if (!falling.dropping) {
+        isDragging = true;
+        falling.x = e.clientX - falling.w/2;
+      }
+    });
+    canvas.addEventListener('pointermove', e => {
+      if (isDragging) falling.x = Math.max(0, Math.min(canvas.width - falling.w, e.clientX - falling.w/2));
+    });
+    canvas.addEventListener('pointerup', () => {
+      if (isDragging && !falling.dropping) falling.dropping = true;
+      isDragging = false;
+    });
+
+    document.getElementById('startBtn').onclick = startGame;
+    document.getElementById('againBtn').onclick = startGame;
+
+    document.getElementById('reviveBtn').onclick = () => {
+      if (gems >= 20) {
+        gems -= 20;
+        localStorage.setItem('towerGems', gems);
+        document.getElementById('gems').textContent = gems;
+        wobble = 0;
+        startGame();
+      } else alert('Need more gems! Buy via UPI 🔥');
+    };
+
+    document.getElementById('buyBtn').onclick = () => {
+      const intentUrl = 'upi://pay?pa=Takashitora2403@oksbi&pn=SuperTowerBuilder&am=1000&cu=INR&tn=100 Gems Pack - Tower Game';
+      window.open(intentUrl, '_blank');
+      alert('Pay ₹10 via UPI → screenshot success / txn ID & send me. I\'ll add your 100 gems! Reload game after.');
+    };
+
+    loop();
+  </script>
+</body>
+</html>
